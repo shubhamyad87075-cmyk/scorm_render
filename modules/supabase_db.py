@@ -208,20 +208,28 @@ class SupabaseDB:
             return []
 
     def init_progress(self, email, courses: list):
-        """Initialize progress for all modules (only if not exists)"""
+        """
+        Initialize progress for all modules.
+        Only Module 1 starts as pending/ready.
+        Modules 2+ start blocked far in future — unlocked when previous completes.
+        """
         if not self.enabled:
             return
         existing = self.get_progress(email)
         existing_ids = {r["course_id"] for r in existing}
-        for course in courses:
+        FAR_FUTURE = "2099-01-01T00:00:00"
+        for idx, course in enumerate(courses):
             if course["id"] not in existing_ids:
                 try:
+                    # Only first module starts ready (next_run_at = now)
+                    # All others blocked until scheduled by previous module completion
+                    next_run = datetime.utcnow().isoformat() if idx == 0 else FAR_FUTURE
                     self._post("account_progress", {
                         "email": email,
                         "course_id": course["id"],
                         "course_name": course["name"],
                         "status": "pending",
-                        "next_run_at": datetime.utcnow().isoformat(),
+                        "next_run_at": next_run,
                         "attempts": 0
                     })
                 except:
@@ -289,14 +297,18 @@ class SupabaseDB:
         except:
             pass
 
-    def mark_module_failed(self, email, course_id):
+    def mark_module_failed(self, email, course_id, locked=False):
         if not self.enabled:
             return
         try:
-            # Retry in 30 minutes
-            retry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
             rows = self._get("account_progress", f"email=eq.{email}&course_id=eq.{course_id}&select=attempts")
             attempts = (rows[0]["attempts"] if rows else 0) + 1
+            if locked:
+                # Locked = prerequisites not met, retry in 24 hours
+                retry = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+            else:
+                # Normal failure = retry in 30 minutes
+                retry = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
             self._patch("account_progress",
                        f"email=eq.{email}&course_id=eq.{course_id}",
                        {"status": "pending", "next_run_at": retry, "attempts": attempts})
