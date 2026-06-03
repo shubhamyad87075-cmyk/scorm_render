@@ -133,9 +133,9 @@ async def process_account_module(account: dict, playwright, custom_schedule: dic
                 return True
 
             if status == "locked" or not can_enter:
-                state.log(f"🔒 Locked: {module_name}", "warning", email)
+                state.log(f"🔒 Locked: {module_name} — retrying in 24h", "warning", email)
                 if db.enabled:
-                    db.mark_module_done(email, course_id)
+                    db.mark_module_failed(email, course_id, locked=True)
                 return False
 
         # Run the module
