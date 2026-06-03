@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: greenpath-simulator
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: SCORM_CONFIG
+        sync: false
+      - key: NORDVPN_USER
+        sync: false
+      - key: NORDVPN_PASS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: OWNER_ID
+        sync: false

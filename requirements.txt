@@ -1,0 +1,8 @@
+flask==3.0.3
+flask-socketio==5.3.6
+simple-websocket==1.1.0
+playwright==1.44.0
+rich==13.7.1
+aiofiles==23.2.1
+pyngrok==7.1.6
+gunicorn==21.2.0
