@@ -176,6 +176,11 @@
   .pg-title{font-size:22px;font-weight:700;letter-spacing:-.3px}
   .pg-sub{font-size:12px;color:var(--muted)}
 
+  /* TABS */
+  .tab-btn{padding:8px 18px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted);font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:all .15s}
+  .tab-btn.active{background:rgba(6,182,212,.1);color:var(--cyan);border-color:rgba(6,182,212,.3)}
+  .tab-btn:hover{color:var(--text)}
+
   /* EMPTY */
   .empty{text-align:center;padding:48px;color:var(--muted)}
   .empty-icon{font-size:40px;opacity:.3;margin-bottom:10px}
@@ -267,26 +272,77 @@
         <div class="pg-title">Accounts</div>
         <button class="btn btn-add btn-sm" onclick="toggleForm()">+ Add Account</button>
       </div>
-      <div class="form-card" id="add-form" style="display:none">
-        <div class="form-title">NEW ACCOUNT</div>
-        <div class="form-grid">
-          <div class="form-group"><label class="form-lbl">Name</label><input class="form-input" id="fn" placeholder="John Doe"></div>
-          <div class="form-group"><label class="form-lbl">Email</label><input class="form-input" id="fe" placeholder="user@email.com" type="email"></div>
-          <div class="form-group"><label class="form-lbl">Password</label><input class="form-input" id="fp" type="password" placeholder="••••••••"></div>
-          <div class="form-group"><label class="form-lbl">Proxy Country</label>
-            <select class="form-select" id="fc">
-              <option value="in">🇮🇳 India</option><option value="ae">🇦🇪 UAE</option>
-              <option value="gb">🇬🇧 UK</option><option value="us">🇺🇸 USA</option>
-              <option value="de">🇩🇪 Germany</option><option value="fr">🇫🇷 France</option>
-              <option value="sg">🇸🇬 Singapore</option><option value="au">🇦🇺 Australia</option>
-              <option value="ca">🇨🇦 Canada</option><option value="nl">🇳🇱 Netherlands</option>
-            </select>
-          </div>
-          <div class="form-group full"><label class="form-lbl">Modules</label><div class="mod-checks" id="fm"></div></div>
+      <!-- TAB SWITCHER -->
+      <div id="add-form" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <button class="tab-btn active" id="tab-single" onclick="switchTab('single')">Single Account</button>
+          <button class="tab-btn" id="tab-bulk" onclick="switchTab('bulk')">Bulk Import</button>
         </div>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="btn btn-add" onclick="addAcc()">+ Add Account</button>
-          <button class="btn btn-ghost" onclick="toggleForm()">Cancel</button>
+
+        <!-- SINGLE ACCOUNT -->
+        <div class="form-card" id="form-single">
+          <div class="form-title">NEW ACCOUNT</div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-lbl">Name</label><input class="form-input" id="fn" placeholder="John Doe"></div>
+            <div class="form-group"><label class="form-lbl">Email</label><input class="form-input" id="fe" placeholder="user@email.com" type="email"></div>
+            <div class="form-group"><label class="form-lbl">Password</label><input class="form-input" id="fp" type="password" placeholder="••••••••"></div>
+            <div class="form-group"><label class="form-lbl">Proxy Country</label>
+              <select class="form-select" id="fc">
+                <option value="in">🇮🇳 India</option><option value="ae">🇦🇪 UAE</option>
+                <option value="gb">🇬🇧 UK</option><option value="us">🇺🇸 USA</option>
+                <option value="de">🇩🇪 Germany</option><option value="fr">🇫🇷 France</option>
+                <option value="sg">🇸🇬 Singapore</option><option value="au">🇦🇺 Australia</option>
+                <option value="ca">🇨🇦 Canada</option><option value="nl">🇳🇱 Netherlands</option>
+              </select>
+            </div>
+            <div class="form-group full"><label class="form-lbl">Modules</label><div class="mod-checks" id="fm"></div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="btn btn-add" onclick="addAcc()">+ Add Account</button>
+            <button class="btn btn-ghost" onclick="toggleForm()">Cancel</button>
+          </div>
+        </div>
+
+        <!-- BULK IMPORT -->
+        <div class="form-card" id="form-bulk" style="display:none">
+          <div class="form-title">BULK IMPORT</div>
+          <div style="font-size:12px;color:var(--muted2);margin-bottom:10px">
+            Paste one account per line in any of these formats:<br>
+            <span style="color:var(--cyan);font-family:'JetBrains Mono',monospace">
+              email:password<br>
+              email password<br>
+              email,password
+            </span>
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-lbl">Accounts (one per line)</label>
+            <textarea class="form-input" id="bulk-text" rows="10" 
+              placeholder="john@email.com:password123&#10;jane@email.com password456&#10;bob@email.com,pass789"
+              style="resize:vertical;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6"></textarea>
+          </div>
+          <div class="form-grid" style="margin-bottom:10px">
+            <div class="form-group">
+              <label class="form-lbl">Default Proxy</label>
+              <select class="form-select" id="bulk-proxy">
+                <option value="in">🇮🇳 India</option><option value="ae">🇦🇪 UAE</option>
+                <option value="gb">🇬🇧 UK</option><option value="us">🇺🇸 USA</option>
+                <option value="de">🇩🇪 Germany</option><option value="fr">🇫🇷 France</option>
+                <option value="sg">🇸🇬 Singapore</option><option value="au">🇦🇺 Australia</option>
+                <option value="ca">🇨🇦 Canada</option><option value="nl">🇳🇱 Netherlands</option>
+              </select>
+            </div>
+          </div>
+          <!-- Preview parsed accounts -->
+          <div id="bulk-preview" style="margin-bottom:10px;display:none">
+            <div class="form-lbl" style="margin-bottom:6px">PREVIEW</div>
+            <div id="bulk-preview-list" style="max-height:150px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;font-family:'JetBrains Mono',monospace;font-size:11px"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-add" onclick="bulkImport()" id="bulk-btn">📥 Import All</button>
+            <button class="btn btn-ghost" onclick="previewBulk()">👁 Preview</button>
+            <button class="btn btn-ghost" onclick="toggleForm()">Cancel</button>
+            <span id="bulk-status" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--green)"></span>
+          </div>
         </div>
       </div>
       <div class="accs-grid" id="accs-list"><div class="empty"><div class="empty-icon">👥</div><div>No accounts yet</div></div></div>
@@ -468,6 +524,100 @@ async function loadAccPage() {
       </div>
     </div>`;
   }).join('');
+}
+
+function switchTab(tab) {
+  document.getElementById('form-single').style.display = tab==='single' ? 'block' : 'none';
+  document.getElementById('form-bulk').style.display   = tab==='bulk'   ? 'block' : 'none';
+  document.getElementById('tab-single').classList.toggle('active', tab==='single');
+  document.getElementById('tab-bulk').classList.toggle('active', tab==='bulk');
+}
+
+function parseBulkText() {
+  const text = document.getElementById('bulk-text').value.trim();
+  if (!text) return [];
+  return text.split('
+')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      let email, password;
+      if (line.includes(':')) {
+        [email, ...rest] = line.split(':');
+        password = rest.join(':');
+      } else if (line.includes(',')) {
+        [email, password] = line.split(',');
+      } else {
+        [email, password] = line.split(' ');
+      }
+      return {
+        email: (email||'').trim().toLowerCase(),
+        password: (password||'').trim()
+      };
+    })
+    .filter(a => a.email && a.password && a.email.includes('@'));
+}
+
+function previewBulk() {
+  const accounts = parseBulkText();
+  const preview  = document.getElementById('bulk-preview');
+  const list     = document.getElementById('bulk-preview-list');
+  if (!accounts.length) {
+    toast('No valid accounts found', 'err');
+    return;
+  }
+  preview.style.display = 'block';
+  list.innerHTML = accounts.map((a, i) =>
+    `<div style="padding:2px 0;color:${a.email&&a.password?'var(--green)':'var(--red)'}">
+      ${i+1}. ${a.email} : ${'•'.repeat(Math.min(a.password.length, 8))}
+    </div>`
+  ).join('');
+  document.getElementById('bulk-status').textContent = `${accounts.length} accounts ready`;
+}
+
+async function bulkImport() {
+  const accounts = parseBulkText();
+  if (!accounts.length) {
+    toast('No valid accounts found', 'err');
+    return;
+  }
+  const proxy  = document.getElementById('bulk-proxy').value;
+  const btn    = document.getElementById('bulk-btn');
+  const status = document.getElementById('bulk-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Importing...';
+  let ok = 0, fail = 0;
+  for (let i = 0; i < accounts.length; i++) {
+    const acc = accounts[i];
+    status.textContent = `Adding ${i+1}/${accounts.length}: ${acc.email.split('@')[0]}...`;
+    try {
+      const r = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          email: acc.email,
+          password: acc.password,
+          proxy_country: proxy,
+          name: acc.email.split('@')[0],
+          modules: []
+        })
+      });
+      const d = await r.json();
+      if (d.ok) ok++;
+      else { fail++; console.log('Failed:', acc.email, d.error); }
+    } catch(e) {
+      fail++;
+    }
+    await new Promise(r => setTimeout(r, 300)); // Small delay between requests
+  }
+  btn.disabled = false;
+  btn.textContent = '📥 Import All';
+  status.textContent = `✅ Done! ${ok} added${fail>0?`, ${fail} failed`:''}`;
+  status.style.color = fail > 0 ? 'var(--amber)' : 'var(--green)';
+  toast(`Imported ${ok} accounts!${fail>0?' ('+fail+' failed)':''}`);
+  loadAccPage();
+  // Clear textarea after success
+  if (ok > 0) document.getElementById('bulk-text').value = '';
 }
 
 function toggleForm() {
