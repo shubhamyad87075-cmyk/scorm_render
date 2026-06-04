@@ -58,8 +58,25 @@ def health():
 def get_state():
     if not _state:
         return jsonify({"error": "not ready"})
+
+    accounts = _state.get_all()
+
+    # If state is empty, load from Supabase/config directly
+    if not accounts and _db and _db.enabled:
+        from modules.proxy import ProxyManager
+        sb_accounts = _db.get_accounts(owner_id=OWNER_ID)
+        accounts = [{
+            "email":        a["email"],
+            "name":         a.get("name", a["email"].split("@")[0]),
+            "status":       "queued",
+            "status_label": "Ready",
+            "proxy":        a.get("proxy_country", "in"),
+            "modules_done": [],
+            "progress":     0
+        } for a in sb_accounts]
+
     return jsonify({
-        "accounts": _state.get_all(),
+        "accounts": accounts,
         "logs":     _state.get_logs(200),
         "schedule": _state.get_schedule(),
         "running":  _state.is_running(),
@@ -109,6 +126,15 @@ def add_account():
         if ok:
             cfg = _load_config()
             _db.init_progress(email, cfg["courses"])
+            # Add to live state so dashboard shows immediately
+            if _state:
+                _state.update(email,
+                    name=name or email.split("@")[0],
+                    proxy=proxy,
+                    status="queued",
+                    status_label="Ready"
+                )
+                push_update()
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "Failed to add (may already exist)"})
 
