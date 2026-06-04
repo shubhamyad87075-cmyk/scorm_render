@@ -83,6 +83,7 @@ async def process_account_module(account: dict, playwright, custom_schedule: dic
 
     if not next_mod:
         state.log(f"No pending modules for {email}", "info", email)
+        state.update(email, status="completed", status_label="✅ All Done!")
         return False
 
     course_id   = next_mod["course_id"]
@@ -92,7 +93,8 @@ async def process_account_module(account: dict, playwright, custom_schedule: dic
 
     module_name = course["name"]
     state.update(email, status="running", current_module=module_name,
-                 status_label=f"🌐 Starting", started_at=datetime.now().strftime("%H:%M:%S"))
+                 status_label=f"🌐 Starting",
+                 started_at=datetime.now().strftime("%H:%M:%S"))
     state.log(f"Starting via {country.upper()} proxy", "info", email)
     push_update()
 
@@ -107,67 +109,93 @@ async def process_account_module(account: dict, playwright, custom_schedule: dic
         state.log("✅ Login successful!", "success", email)
         push_update()
 
-        if db.enabled:
-            db.mark_module_running(email, course_id)
-
-        # Check current status from Docebo
+        # Get ALL module statuses from Docebo in one call
         courses_status = await browser_mgr.get_course_statuses(page)
         debug = getattr(browser_mgr, '_last_api_debug', '')
         state.log(f"Got {len(courses_status)} courses | {debug}", "info", email)
 
-        current = next((c for c in courses_status if c["idCourse"] == course_id), None)
+        # Find the right module to run — skip already completed ones
+        target_course    = None
+        target_course_id = None
+        target_current   = None
 
-        if current:
-            status        = current.get("status", "")
-            completed_les = current.get("competed_lessons", 0)
-            total_les     = current.get("all_lessons", 0)
-            can_enter     = current.get("can_enter", True)
+        for course_check in COURSES:
+            cid     = course_check["id"]
+            current = next((c for c in courses_status if c["idCourse"] == cid), None)
+            if not current:
+                continue
 
-            state.log(f"✔ {module_name} → {status} {completed_les}/{total_les}", "info", email)
+            status    = current.get("status", "")
+            can_enter = current.get("can_enter", True)
 
+            # Skip completed
             if status == "completed":
-                state.log(f"✅ Already completed — skipping: {module_name}", "success", email)
                 if db.enabled:
-                    db.mark_module_done(email, course_id)
-                    _schedule_next(email, course_id, custom_schedule)
-                return True
+                    db.mark_module_done(email, cid)
+                state.log(f"✅ Already done: {course_check['name']}", "info", email)
+                continue
 
+            # Skip locked
             if status == "locked" or not can_enter:
-                state.log(f"🔒 Locked: {module_name} — retrying in 24h", "warning", email)
-                if db.enabled:
-                    db.mark_module_failed(email, course_id, locked=True)
-                return False
+                state.log(f"🔒 Locked: {course_check['name']}", "info", email)
+                continue
 
-        # Run the module
-        module_url = browser_mgr.get_module_url(course_id, course["slug"])
-        state.update(email, status_label=f"📖 {module_name}")
+            # This is the next module to run!
+            target_course    = course_check
+            target_course_id = cid
+            target_current   = current
+            break
+
+        if not target_course:
+            state.log(f"🎉 All modules done for {email}!", "success", email)
+            state.update(email, status="completed", status_label="✅ All Done!")
+            if db.enabled:
+                # Mark all as completed in Supabase
+                for c in COURSES:
+                    db.mark_module_done(email, c["id"])
+            return True
+
+        module_name   = target_course["name"]
+        completed_les = target_current.get("competed_lessons", 0)
+        total_les     = target_current.get("all_lessons", 0)
+        doc_status    = target_current.get("status", "")
+
+        state.log(f"▶ Running: {module_name} ({doc_status} {completed_les}/{total_les})",
+                  "info", email)
+
+        if db.enabled:
+            db.mark_module_running(email, target_course_id)
+
+        module_url = browser_mgr.get_module_url(target_course_id, target_course["slug"])
+        state.update(email, current_module=module_name, status_label=f"📖 {module_name}")
         state.log(f"🚀 Starting: {module_name}", "info", email)
         push_update()
 
-        completed_les = current.get("competed_lessons", 0) if current else 0
         scorm   = SCORMSimulator(page, CONFIG, state, email, speed=SPEED)
-        success = await scorm.run_module(module_url, course, completed_lessons=completed_les)
+        success = await scorm.run_module(module_url, target_course,
+                                         completed_lessons=completed_les)
 
         if success:
             done = state.get(email).get("modules_done", [])
-            done.append(module_name)
+            if module_name not in done:
+                done.append(module_name)
             state.update(email, modules_done=done)
             state.log(f"✅ Completed: {module_name}", "success", email)
             if db.enabled:
-                db.mark_module_done(email, course_id)
-                _schedule_next(email, course_id, custom_schedule)
+                db.mark_module_done(email, target_course_id)
+                _schedule_next(email, target_course_id, custom_schedule)
         else:
             state.log(f"❌ Failed: {module_name}", "error", email)
             if db.enabled:
-                db.mark_module_failed(email, course_id)
+                db.mark_module_failed(email, target_course_id)
 
         push_update()
         return success
 
     except Exception as e:
         state.log(f"ERROR: {e}", "error", email)
-        if db.enabled:
-            db.mark_module_failed(email, course_id)
+        if db.enabled and target_course_id:
+            db.mark_module_failed(email, target_course_id)
         return False
     finally:
         if context:
