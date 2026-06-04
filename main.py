@@ -452,6 +452,15 @@ if __name__ == "__main__":
     ACCOUNTS = get_all_accounts()
     state    = StateManager(ACCOUNTS, COURSES)
 
+    # Pre-populate state so dashboard shows accounts immediately
+    for acc in ACCOUNTS:
+        state.update(acc["email"],
+            name=acc.get("name", acc["email"].split("@")[0]),
+            proxy=acc.get("proxy_country", "in"),
+            status="queued",
+            status_label="Ready"
+        )
+
     init_dashboard(state, db=db)
     set_simulator_runner(simulator_thread)
 
