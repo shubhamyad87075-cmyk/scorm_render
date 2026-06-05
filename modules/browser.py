@@ -269,6 +269,50 @@ class BrowserManager:
             self._last_api_debug = f"Exception: {str(e)[:100]}"
             return []
 
+
+    async def _ensure_enrolled(self, page):
+        """Auto-enroll account in LP if not enrolled yet"""
+        try:
+            cookies = await page.context.cookies()
+            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+            if token:
+                return  # Already enrolled
+
+            # Navigate to LP page
+            lp_url = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
+            print(f"  Enrolling in LP...")
+            await page.goto(lp_url, wait_until="networkidle", timeout=25000)
+            await asyncio.sleep(3)
+
+            # Click Start/Enroll button
+            for sel in [
+                "button:has-text('Start learning')",
+                "button:has-text('Enroll')",
+                "button:has-text('Start')",
+                "a:has-text('Start learning')",
+            ]:
+                try:
+                    btn = await page.wait_for_selector(sel, timeout=3000)
+                    if btn:
+                        text = await btn.inner_text()
+                        print(f"  Clicked: {text.strip()}")
+                        await btn.click()
+                        await asyncio.sleep(5)
+                        # Wait for hydra token
+                        for _ in range(10):
+                            cookies = await page.context.cookies()
+                            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+                            if token:
+                                print(f"  Enrolled! Token obtained")
+                                return
+                            await asyncio.sleep(2)
+                        break
+                except:
+                    continue
+            print(f"  Could not auto-enroll")
+        except Exception as e:
+            print(f"  Enroll error: {e}")
+
     def get_module_url(self, course_id: int, slug: str) -> str:
         return (
             f"{self.lms_url}/learn/learning-plans/{self.lp_id}"
