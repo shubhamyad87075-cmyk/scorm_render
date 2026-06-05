@@ -240,12 +240,11 @@ class SupabaseDB:
         if not self.enabled:
             return []
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
             rows = self._get(
                 "account_progress",
                 f"status=eq.pending&next_run_at=lte.{now}&order=next_run_at.asc"
             )
-            # Group by email, get unique emails
             ready_emails = []
             seen = set()
             for row in rows:
@@ -256,7 +255,8 @@ class SupabaseDB:
                 if len(ready_emails) >= max_concurrent:
                     break
             return ready_emails
-        except:
+        except Exception as e:
+            print(f"get_ready_accounts error: {e}")
             return []
 
     def get_next_module(self, email) -> dict:
@@ -264,7 +264,7 @@ class SupabaseDB:
         if not self.enabled:
             return None
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
             rows = self._get(
                 "account_progress",
                 f"email=eq.{email}&status=eq.pending&next_run_at=lte.{now}&order=course_id.asc&limit=1"
@@ -345,8 +345,7 @@ class SupabaseDB:
         if not self.enabled:
             return []
         try:
-            from datetime import datetime as _dt
-            now = _dt.utcnow().isoformat()
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
             rows = self._get("account_progress",
                 f"status=eq.pending&next_run_at=lte.{now}&order=next_run_at.asc")
             seen = []
@@ -357,7 +356,8 @@ class SupabaseDB:
                 if len(seen) >= max_concurrent:
                     break
             return seen
-        except:
+        except Exception as e:
+            print(f"get_ready_accounts error: {e}")
             return []
 
     def get_next_module_any(self, email):
