@@ -178,6 +178,29 @@ class BrowserManager:
 
         print(f"  ✅ Login successful!")
 
+        # Wait for hydra_access_token to be set (may take a moment)
+        for wait_i in range(10):
+            all_cookies = await context.cookies()
+            token_found = any(c["name"] == "hydra_access_token" for c in all_cookies)
+            if token_found:
+                break
+            print(f"  ⏳ Waiting for hydra token... ({wait_i+1}/10)")
+            await asyncio.sleep(2)
+        else:
+            # Token not found - log cookie names for debugging
+            all_cookies = await context.cookies()
+            names = [c["name"] for c in all_cookies][:10]
+            print(f"  ⚠️ hydra_access_token not found! Cookies: {names}")
+            # Try navigating to LP page to trigger token
+            try:
+                await page.goto(
+                    f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}",
+                    wait_until="networkidle", timeout=20000
+                )
+                await asyncio.sleep(5)
+            except:
+                pass
+
         # Save cookies
         cookies = await context.cookies(["https://inco.docebosaas.com"])
         self._save_cookies(email, cookies)
