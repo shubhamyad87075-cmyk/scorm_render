@@ -240,7 +240,7 @@ class SupabaseDB:
         if not self.enabled:
             return []
         try:
-            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             rows = self._get(
                 "account_progress",
                 f"status=eq.pending&next_run_at=lte.{now}&order=next_run_at.asc"
@@ -264,7 +264,7 @@ class SupabaseDB:
         if not self.enabled:
             return None
         try:
-            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             rows = self._get(
                 "account_progress",
                 f"email=eq.{email}&status=eq.pending&next_run_at=lte.{now}&order=course_id.asc&limit=1"
@@ -345,7 +345,7 @@ class SupabaseDB:
         if not self.enabled:
             return []
         try:
-            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             rows = self._get("account_progress",
                 f"status=eq.pending&next_run_at=lte.{now}&order=next_run_at.asc")
             seen = []
