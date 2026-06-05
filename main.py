@@ -147,12 +147,16 @@ async def process_account_module(account: dict, playwright, custom_schedule: dic
             break
 
         if not target_course:
+            # Only mark as done if API actually returned courses
+            # If 0 courses returned = API failure, not actual completion
+            if len(courses_status) == 0:
+                state.log(f"⚠️ API returned 0 courses — login/token issue, retrying in 30min", "warning", email)
+                if db.enabled and next_mod:
+                    db.mark_module_failed(email, next_mod["course_id"])
+                return False
+            # API returned courses but all are done/locked = genuinely complete
             state.log(f"🎉 All modules done for {email}!", "success", email)
             state.update(email, status="completed", status_label="✅ All Done!")
-            if db.enabled:
-                # Mark all as completed in Supabase
-                for c in COURSES:
-                    db.mark_module_done(email, c["id"])
             return True
 
         module_name   = target_course["name"]
