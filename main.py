@@ -298,6 +298,7 @@ async def queue_worker(custom_schedule=None, single_email=None):
 
             # Find accounts ready to run NOW
             ready_emails = db.get_ready_accounts(COURSES, max_concurrent=1)
+            state.log(f"Queue check: {len(ready_emails)} ready | db={db.enabled}", "info")
 
             if ready_emails:
                 email   = ready_emails[0]
@@ -308,11 +309,26 @@ async def queue_worker(custom_schedule=None, single_email=None):
                     await process_account_module(account, playwright, custom_schedule)
                     push_update()
                     await asyncio.sleep(5)
+                else:
+                    state.log(f"⚠️ Account {email} not in ACCOUNTS_ALL list!", "warning")
+                    await asyncio.sleep(60)
             else:
-                # Nothing ready — check what's coming up next
+                # Nothing ready — show next scheduled time
+                import urllib.request as _ur
+                try:
+                    now_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                    next_rows = db._get("account_progress",
+                        f"status=eq.pending&order=next_run_at.asc&limit=1")
+                    if next_rows:
+                        nxt = next_rows[0]
+                        state.log(f"Next: {nxt['email'].split('@')[0]} at {nxt['next_run_at'][:16]}", "info")
+                    else:
+                        state.log("No pending modules in DB", "info")
+                except Exception as e:
+                    state.log(f"Queue debug error: {e}", "warning")
                 _update_waiting_statuses(ACCOUNTS_ALL)
                 push_update()
-                await asyncio.sleep(60)  # Check again in 60 seconds
+                await asyncio.sleep(60)
 
     state.log("✅ Queue stopped", "success")
     push_update()
