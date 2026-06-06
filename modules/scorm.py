@@ -77,7 +77,16 @@ class SCORMSimulator:
 
     async def _open_module(self, module_url: str) -> bool:
         self._log(f"Going to module: {module_url}")
-        await self.page.goto(module_url, wait_until="networkidle", timeout=30000)
+        # Try navigation with retry
+        for nav_attempt in range(3):
+            try:
+                await self.page.goto(module_url, wait_until="domcontentloaded", timeout=45000)
+                break
+            except Exception as e:
+                if nav_attempt == 2:
+                    raise
+                self._log(f"Navigation timeout, retry {nav_attempt+1}...", "warning")
+                await asyncio.sleep(5)
         await asyncio.sleep(3)
 
         url = self.page.url
