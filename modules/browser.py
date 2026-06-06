@@ -223,12 +223,30 @@ class BrowserManager:
                 self._last_api_debug = "Redirected to signin"
                 return []
 
-            # Get hydra_access_token from cookies
+            # Get token - check cookies first, then localStorage
             cookies = await page.context.cookies()
             token = next(
                 (c["value"] for c in cookies if c["name"] == "hydra_access_token"),
                 None
             )
+            # Fallback: check localStorage (used by some account types e.g. Outlook)
+            if not token:
+                try:
+                    ls_token = await page.evaluate("""
+                        () => {
+                            try {
+                                const raw = localStorage.getItem('access_token');
+                                if (!raw) return null;
+                                const parsed = JSON.parse(raw);
+                                return parsed.access_token || null;
+                            } catch(e) { return null; }
+                        }
+                    """)
+                    if ls_token:
+                        token = ls_token
+                        print(f"  ✅ Got token from localStorage")
+                except:
+                    pass
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
@@ -237,7 +255,8 @@ class BrowserManager:
                 headers["Authorization"] = f"Bearer {token}"
 
             response = await page.context.request.get(api_url, headers=headers)
-            self._last_api_debug = f"HTTP:{response.status} token={'yes' if token else 'no'}"
+            token_src = "cookie" if next((c for c in cookies if c["name"] == "hydra_access_token"), None) else "localStorage" if token else "none"
+            self._last_api_debug = f"HTTP:{response.status} token={token_src}"
 
             if response.status == 403:
                 # Token expired — re-navigate to LP to refresh session
