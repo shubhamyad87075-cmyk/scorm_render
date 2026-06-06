@@ -83,7 +83,7 @@ class BrowserManager:
             await context.add_cookies(saved)
             await page.goto(
                 f"{self.lms_url}/learn/lp/{self.lp_id}/{self.lp_slug}",
-                wait_until="networkidle", timeout=30000
+                wait_until="domcontentloaded", timeout=45000
             )
             await asyncio.sleep(3)
             if "signin" not in page.url and "login" not in page.url:
@@ -94,7 +94,7 @@ class BrowserManager:
 
         # ── Accept cookies banner first ───────────────────────────
         print(f"  🔑 Logging in: {email}")
-        await page.goto(f"{self.lms_url}/login", wait_until="networkidle", timeout=30000)
+        await page.goto(f"{self.lms_url}/login", wait_until="domcontentloaded", timeout=45000)
         await asyncio.sleep(2)
 
         # Accept cookie banner if present
@@ -168,7 +168,7 @@ class BrowserManager:
                     break
                 except: continue
 
-        await page.wait_for_load_state("networkidle", timeout=20000)
+        await page.wait_for_load_state("networkidle", timeout=45000)
         await asyncio.sleep(3)
 
         print(f"  After login URL: {page.url}")
@@ -195,7 +195,7 @@ class BrowserManager:
             try:
                 await page.goto(
                     f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}",
-                    wait_until="networkidle", timeout=20000
+                    wait_until="domcontentloaded", timeout=45000
                 )
                 await asyncio.sleep(5)
             except:
@@ -216,7 +216,7 @@ class BrowserManager:
         try:
             # Navigate to LP page first to ensure session is active
             lp_url = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
-            await page.goto(lp_url, wait_until="networkidle", timeout=20000)
+            await page.goto(lp_url, wait_until="domcontentloaded", timeout=45000)
             await asyncio.sleep(3)
 
             if "signin" in page.url or "login" in page.url:
@@ -245,7 +245,7 @@ class BrowserManager:
                 await asyncio.sleep(3)
                 await page.goto(
                     f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}",
-                    wait_until="networkidle", timeout=20000
+                    wait_until="domcontentloaded", timeout=45000
                 )
                 await asyncio.sleep(5)
                 # Refresh cookies and retry once
@@ -281,35 +281,55 @@ class BrowserManager:
             # Navigate to LP page
             lp_url = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
             print(f"  Enrolling in LP...")
-            await page.goto(lp_url, wait_until="networkidle", timeout=25000)
+            await page.goto(lp_url, wait_until="domcontentloaded", timeout=45000)
             await asyncio.sleep(3)
 
-            # Click Start/Enroll button
-            for sel in [
-                "button:has-text('Start learning')",
-                "button:has-text('Enroll')",
-                "button:has-text('Start')",
-                "a:has-text('Start learning')",
-            ]:
-                try:
-                    btn = await page.wait_for_selector(sel, timeout=3000)
-                    if btn:
-                        text = await btn.inner_text()
-                        print(f"  Clicked: {text.strip()}")
-                        await btn.click()
-                        await asyncio.sleep(5)
-                        # Wait for hydra token
-                        for _ in range(10):
-                            cookies = await page.context.cookies()
-                            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
-                            if token:
-                                print(f"  Enrolled! Token obtained")
-                                return
-                            await asyncio.sleep(2)
-                        break
-                except:
-                    continue
-            print(f"  Could not auto-enroll")
+            # Try direct navigation to LP - this triggers enrollment
+            print(f"  Navigating to LP to trigger enrollment...")
+            lp_direct = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
+            await page.goto(lp_direct, wait_until="domcontentloaded", timeout=45000)
+            await asyncio.sleep(4)
+
+            # Check token again after navigation
+            cookies = await page.context.cookies()
+            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+            if token:
+                print(f"  Token obtained after LP navigation!")
+                return
+
+            # Try clicking any play/start button on the page
+            clicked = await page.evaluate("""
+                () => {
+                    // Try LP card play button
+                    const btns = document.querySelectorAll(
+                        'button, a, [role="button"], [class*="play"], [class*="start"], [class*="enroll"]'
+                    );
+                    for (const btn of btns) {
+                        const text = (btn.innerText || btn.textContent || btn.title || "").trim().toLowerCase();
+                        if (text.includes("start") || text.includes("play") || text.includes("enroll") || text.includes("begin")) {
+                            btn.click();
+                            return text;
+                        }
+                    }
+                    // Try clicking the LP card itself
+                    const card = document.querySelector('[class*="lp-card"], [class*="learning-plan-card"], [class*="course-card"]');
+                    if (card) { card.click(); return "card"; }
+                    return null;
+                }
+            """)
+            print(f"  Clicked: {clicked}")
+            await asyncio.sleep(5)
+
+            # Wait for token after click
+            for _ in range(10):
+                cookies = await page.context.cookies()
+                token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+                if token:
+                    print(f"  Enrolled! Token obtained after click")
+                    return
+                await asyncio.sleep(2)
+
+            print(f"  Could not auto-enroll — account may need manual enrollment")
         except Exception as e:
             print(f"  Enroll error: {e}")
 
