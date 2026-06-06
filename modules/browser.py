@@ -271,65 +271,76 @@ class BrowserManager:
 
 
     async def _ensure_enrolled(self, page):
-        """Auto-enroll account in LP if not enrolled yet"""
+        """Auto-enroll in LP using API if hydra token missing"""
         try:
             cookies = await page.context.cookies()
             token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
             if token:
-                return  # Already enrolled
+                return  # Already have token
 
-            # Navigate to LP page
+            print(f"  No hydra token — attempting enrollment via API...")
+
+            # Get CSRF token from cookies
+            csrf = next((c["value"] for c in cookies if c["name"] == "_csrf"), None)
+
+            # Try enrollment API
+            enroll_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}/enroll"
+            headers = {"Content-Type": "application/json", "Accept": "application/json"}
+            if csrf:
+                headers["X-CSRF-Token"] = csrf
+
+            try:
+                resp = await page.context.request.post(enroll_url, headers=headers)
+                print(f"  Enroll API: {resp.status}")
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"  Enroll API error: {e}")
+
+            # Navigate to LP page to get token after enrollment
             lp_url = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
-            print(f"  Enrolling in LP...")
             await page.goto(lp_url, wait_until="domcontentloaded", timeout=45000)
-            await asyncio.sleep(3)
-
-            # Try direct navigation to LP - this triggers enrollment
-            print(f"  Navigating to LP to trigger enrollment...")
-            lp_direct = f"{self.lms_url}/learn/learning-plans/{self.lp_id}/{self.lp_slug}"
-            await page.goto(lp_direct, wait_until="domcontentloaded", timeout=45000)
-            await asyncio.sleep(4)
-
-            # Check token again after navigation
-            cookies = await page.context.cookies()
-            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
-            if token:
-                print(f"  Token obtained after LP navigation!")
-                return
-
-            # Try clicking any play/start button on the page
-            clicked = await page.evaluate("""
-                () => {
-                    // Try LP card play button
-                    const btns = document.querySelectorAll(
-                        'button, a, [role="button"], [class*="play"], [class*="start"], [class*="enroll"]'
-                    );
-                    for (const btn of btns) {
-                        const text = (btn.innerText || btn.textContent || btn.title || "").trim().toLowerCase();
-                        if (text.includes("start") || text.includes("play") || text.includes("enroll") || text.includes("begin")) {
-                            btn.click();
-                            return text;
-                        }
-                    }
-                    // Try clicking the LP card itself
-                    const card = document.querySelector('[class*="lp-card"], [class*="learning-plan-card"], [class*="course-card"]');
-                    if (card) { card.click(); return "card"; }
-                    return null;
-                }
-            """)
-            print(f"  Clicked: {clicked}")
             await asyncio.sleep(5)
 
-            # Wait for token after click
-            for _ in range(10):
+            # Wait for hydra token
+            for i in range(15):
                 cookies = await page.context.cookies()
                 token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
                 if token:
-                    print(f"  Enrolled! Token obtained after click")
+                    print(f"  Token obtained after enrollment!")
                     return
                 await asyncio.sleep(2)
 
-            print(f"  Could not auto-enroll — account may need manual enrollment")
+            # Last resort - click play/start button on page
+            await page.evaluate("""
+                () => {
+                    const selectors = [
+                        '[class*="play-btn"]', '[class*="lp-play"]',
+                        '[class*="start-btn"]', 'button[class*="play"]',
+                        '[data-id="play-button"]', '[class*="card"] button',
+                        'dcb-play-button button', '[class*="player-button"]'
+                    ];
+                    for (const sel of selectors) {
+                        const el = document.querySelector(sel);
+                        if (el) { el.click(); return sel; }
+                    }
+                    // Click first visible button
+                    const btns = [...document.querySelectorAll('button')];
+                    const playBtn = btns.find(b => {
+                        const t = (b.innerText||b.title||'').toLowerCase();
+                        return t.includes('play') || t.includes('start') || t.includes('begin');
+                    });
+                    if (playBtn) { playBtn.click(); return 'text-match'; }
+                    return null;
+                }
+            """)
+            await asyncio.sleep(5)
+
+            cookies = await page.context.cookies()
+            token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+            if token:
+                print(f"  Token obtained after button click!")
+            else:
+                print(f"  ⚠️ Still no token — account needs manual LP enrollment")
         except Exception as e:
             print(f"  Enroll error: {e}")
 
