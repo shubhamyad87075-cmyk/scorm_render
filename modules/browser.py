@@ -205,6 +205,21 @@ class BrowserManager:
         cookies = await context.cookies(["https://inco.docebosaas.com"])
         self._save_cookies(email, cookies)
 
+        # Also save localStorage token if present (for Outlook/SSO accounts)
+        try:
+            ls_token = await page.evaluate("""
+                () => {
+                    try {
+                        return localStorage.getItem('access_token');
+                    } catch(e) { return null; }
+                }
+            """)
+            if ls_token and self._db and self._db.enabled:
+                self._db.save_cookies(email + "_ls", [{"name": "access_token", "value": ls_token}])
+                print(f"  ✅ localStorage token saved to Supabase")
+        except Exception as e:
+            print(f"  localStorage save error: {e}")
+
         return page
 
     async def get_course_statuses(self, page) -> list:
@@ -223,38 +238,59 @@ class BrowserManager:
                 self._last_api_debug = "Redirected to signin"
                 return []
 
-            # Get token - check cookies first, then localStorage
+            # Get token - check cookies first
             cookies = await page.context.cookies()
             token = next(
                 (c["value"] for c in cookies if c["name"] == "hydra_access_token"),
                 None
             )
 
-            # Fallback: wait for Angular to set localStorage token
-            # Fresh browser has empty localStorage - Angular needs time to init
+            # Fallback: restore localStorage token from Supabase
+            if not token and self._db and self._db.enabled:
+                try:
+                    saved = self._db.load_cookies(email + "_ls")
+                    if saved:
+                        ls_raw = saved[0].get("value", "")
+                        # Parse if it's JSON
+                        try:
+                            import json as _json
+                            obj = _json.loads(ls_raw)
+                            token = obj.get("access_token") if isinstance(obj, dict) else ls_raw
+                        except:
+                            token = ls_raw
+                        if token:
+                            # Inject into browser localStorage
+                            await page.evaluate(f"""
+                                () => {{
+                                    localStorage.setItem('access_token', JSON.stringify({{
+                                        "access_token": "{token}",
+                                        "token_type": "bearer",
+                                        "scope": "api"
+                                    }}));
+                                }}
+                            """)
+                            print(f"  ✅ Restored localStorage token from Supabase")
+                except Exception as e:
+                    print(f"  localStorage restore error: {e}")
+
+            # Final fallback: check page localStorage directly
             if not token:
-                print(f"  No cookie token - waiting for Angular to set localStorage...")
-                for wait_i in range(20):  # Wait up to 40 seconds
-                    try:
-                        ls_token = await page.evaluate("""
-                            () => {
-                                try {
-                                    const raw = localStorage.getItem('access_token');
-                                    if (!raw) return null;
-                                    const obj = JSON.parse(raw);
-                                    return obj.access_token || null;
-                                } catch(e) { return null; }
-                            }
-                        """)
-                        if ls_token:
-                            token = ls_token
-                            print(f"  ✅ Got token from localStorage after {wait_i*2}s")
-                            break
-                    except:
-                        pass
-                    await asyncio.sleep(2)
-                if not token:
-                    print(f"  ⚠️ No token found after 40s wait")
+                try:
+                    ls_token = await page.evaluate("""
+                        () => {
+                            try {
+                                const raw = localStorage.getItem('access_token');
+                                if (!raw) return null;
+                                const obj = JSON.parse(raw);
+                                return obj.access_token || null;
+                            } catch(e) { return null; }
+                        }
+                    """)
+                    if ls_token:
+                        token = ls_token
+                        print(f"  ✅ Got token from page localStorage")
+                except:
+                    pass
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
