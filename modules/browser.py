@@ -254,6 +254,10 @@ class BrowserManager:
             if token:
                 headers["Authorization"] = f"Bearer {token}"
 
+            # Debug: log what token we have
+            print(f"  Token type: {'cookie' if next((c for c in cookies if c['name']=='hydra_access_token'),None) else 'localStorage' if token else 'NONE'}")
+            print(f"  Token value: {token[:20] if token else 'NONE'}...")
+
             response = await page.context.request.get(api_url, headers=headers)
             token_src = "cookie" if next((c for c in cookies if c["name"] == "hydra_access_token"), None) else "localStorage" if token else "none"
             self._last_api_debug = f"HTTP:{response.status} token={token_src}"
