@@ -230,24 +230,23 @@ class BrowserManager:
                 None
             )
             # Fallback: check localStorage (used by some account types e.g. Outlook)
-            # Check localStorage for Outlook/SSO accounts
-if not token:
-    try:
-        ls_raw = await page.evaluate("""
-            () => {
-                try {
-                    const raw = localStorage.getItem('access_token');
-                    if (!raw) return null;
-                    const obj = JSON.parse(raw);
-                    return obj.access_token || null;
-                } catch(e) { return null; }
-            }
-        """)
-        if ls_raw:
-            token = ls_raw
-            print("  ✅ Token from localStorage")
-    except Exception as e:
-        print(f"  localStorage error: {e}")
+            if not token:
+                try:
+                    ls_token = await page.evaluate("""
+                        () => {
+                            try {
+                                const raw = localStorage.getItem('access_token');
+                                if (!raw) return null;
+                                const parsed = JSON.parse(raw);
+                                return parsed.access_token || null;
+                            } catch(e) { return null; }
+                        }
+                    """)
+                    if ls_token:
+                        token = ls_token
+                        print(f"  ✅ Got token from localStorage")
+                except:
+                    pass
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
@@ -268,9 +267,26 @@ if not token:
                     wait_until="domcontentloaded", timeout=45000
                 )
                 await asyncio.sleep(5)
-                # Refresh cookies and retry once
+                # Refresh cookies and retry once - also check localStorage
                 cookies = await page.context.cookies()
                 token = next((c["value"] for c in cookies if c["name"] == "hydra_access_token"), None)
+                if not token:
+                    try:
+                        ls_raw = await page.evaluate("""
+                            () => {
+                                try {
+                                    const raw = localStorage.getItem('access_token');
+                                    if (!raw) return null;
+                                    const obj = JSON.parse(raw);
+                                    return obj.access_token || null;
+                                } catch(e) { return null; }
+                            }
+                        """)
+                        if ls_raw:
+                            token = ls_raw
+                            print("  ✅ Retry: token from localStorage")
+                    except:
+                        pass
                 if token:
                     headers["Authorization"] = f"Bearer {token}"
                 response = await page.context.request.get(api_url, headers=headers)
