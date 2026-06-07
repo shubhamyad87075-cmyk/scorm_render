@@ -229,24 +229,32 @@ class BrowserManager:
                 (c["value"] for c in cookies if c["name"] == "hydra_access_token"),
                 None
             )
-            # Fallback: check localStorage (used by some account types e.g. Outlook)
+
+            # Fallback: wait for Angular to set localStorage token
+            # Fresh browser has empty localStorage - Angular needs time to init
             if not token:
-                try:
-                    ls_token = await page.evaluate("""
-                        () => {
-                            try {
-                                const raw = localStorage.getItem('access_token');
-                                if (!raw) return null;
-                                const parsed = JSON.parse(raw);
-                                return parsed.access_token || null;
-                            } catch(e) { return null; }
-                        }
-                    """)
-                    if ls_token:
-                        token = ls_token
-                        print(f"  ✅ Got token from localStorage")
-                except:
-                    pass
+                print(f"  No cookie token - waiting for Angular to set localStorage...")
+                for wait_i in range(20):  # Wait up to 40 seconds
+                    try:
+                        ls_token = await page.evaluate("""
+                            () => {
+                                try {
+                                    const raw = localStorage.getItem('access_token');
+                                    if (!raw) return null;
+                                    const obj = JSON.parse(raw);
+                                    return obj.access_token || null;
+                                } catch(e) { return null; }
+                            }
+                        """)
+                        if ls_token:
+                            token = ls_token
+                            print(f"  ✅ Got token from localStorage after {wait_i*2}s")
+                            break
+                    except:
+                        pass
+                    await asyncio.sleep(2)
+                if not token:
+                    print(f"  ⚠️ No token found after 40s wait")
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
