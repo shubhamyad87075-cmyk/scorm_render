@@ -230,23 +230,24 @@ class BrowserManager:
                 None
             )
             # Fallback: check localStorage (used by some account types e.g. Outlook)
-            if not token:
-                try:
-                    ls_token = await page.evaluate("""
-                        () => {
-                            try {
-                                const raw = localStorage.getItem('access_token');
-                                if (!raw) return null;
-                                const parsed = JSON.parse(raw);
-                                return parsed.access_token || null;
-                            } catch(e) { return null; }
-                        }
-                    """)
-                    if ls_token:
-                        token = ls_token
-                        print(f"  ✅ Got token from localStorage")
-                except:
-                    pass
+            # Check localStorage for Outlook/SSO accounts
+if not token:
+    try:
+        ls_raw = await page.evaluate("""
+            () => {
+                try {
+                    const raw = localStorage.getItem('access_token');
+                    if (!raw) return null;
+                    const obj = JSON.parse(raw);
+                    return obj.access_token || null;
+                } catch(e) { return null; }
+            }
+        """)
+        if ls_raw:
+            token = ls_raw
+            print("  ✅ Token from localStorage")
+    except Exception as e:
+        print(f"  localStorage error: {e}")
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
