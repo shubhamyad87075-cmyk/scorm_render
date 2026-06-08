@@ -177,6 +177,20 @@ class BrowserManager:
             raise Exception(f"Login failed for {email}")
 
         print(f"  ✅ Login successful!")
+        # Capture localStorage token immediately (for Outlook/SSO accounts)
+        try:
+            ls_raw = await page.evaluate(
+                "() => { try { return localStorage.getItem('access_token'); } catch(e) { return null; } }"
+            )
+            if ls_raw:
+                import json as _j
+                obj = _j.loads(ls_raw)
+                self._ls_token = obj.get("access_token")
+                print(f"  ✅ Captured localStorage token")
+            else:
+                self._ls_token = None
+        except:
+            self._ls_token = None
 
         # Wait for hydra_access_token to be set (may take a moment)
         for wait_i in range(10):
@@ -238,59 +252,44 @@ class BrowserManager:
                 self._last_api_debug = "Redirected to signin"
                 return []
 
-            # Get token - check cookies first
+            # Get token from cookies
             cookies = await page.context.cookies()
             token = next(
                 (c["value"] for c in cookies if c["name"] == "hydra_access_token"),
                 None
             )
 
-            # Fallback: restore localStorage token from Supabase
-            if not token and self._db and self._db.enabled:
-                try:
-                    saved = self._db.load_cookies(email + "_ls")
-                    if saved:
-                        ls_raw = saved[0].get("value", "")
-                        # Parse if it's JSON
-                        try:
-                            import json as _json
-                            obj = _json.loads(ls_raw)
-                            token = obj.get("access_token") if isinstance(obj, dict) else ls_raw
-                        except:
-                            token = ls_raw
-                        if token:
-                            # Inject into browser localStorage
-                            await page.evaluate(f"""
-                                () => {{
-                                    localStorage.setItem('access_token', JSON.stringify({{
-                                        "access_token": "{token}",
-                                        "token_type": "bearer",
-                                        "scope": "api"
-                                    }}));
-                                }}
-                            """)
-                            print(f"  ✅ Restored localStorage token from Supabase")
-                except Exception as e:
-                    print(f"  localStorage restore error: {e}")
-
-            # Final fallback: check page localStorage directly
+            # Use captured localStorage token for Outlook accounts
             if not token:
-                try:
-                    ls_token = await page.evaluate("""
-                        () => {
-                            try {
-                                const raw = localStorage.getItem('access_token');
-                                if (!raw) return null;
-                                const obj = JSON.parse(raw);
-                                return obj.access_token || null;
-                            } catch(e) { return null; }
-                        }
-                    """)
-                    if ls_token:
-                        token = ls_token
-                        print(f"  ✅ Got token from page localStorage")
-                except:
-                    pass
+                # First try injecting the saved token from login
+                if hasattr(self, '_ls_token') and self._ls_token:
+                    try:
+                        t = self._ls_token
+                        await page.evaluate(f"""
+                            () => {{
+                                localStorage.setItem('access_token', JSON.stringify({{
+                                    "access_token": "{t}",
+                                    "token_type": "bearer",
+                                    "scope": "api"
+                                }}));
+                            }}
+                        """)
+                        token = t
+                        print(f"  ✅ Injected saved localStorage token")
+                    except Exception as e:
+                        print(f"  Inject error: {e}")
+
+                # Direct localStorage check
+                if not token:
+                    try:
+                        ls_token = await page.evaluate(
+                            "() => { try { const r=localStorage.getItem('access_token'); return r?JSON.parse(r).access_token:null; } catch(e){return null;} }"
+                        )
+                        if ls_token:
+                            token = ls_token
+                            print(f"  ✅ Token from localStorage")
+                    except:
+                        pass
 
             api_url = f"{self.lms_url}/learn/v1/lp/{self.lp_id}?get_courses_instructors=1"
 
